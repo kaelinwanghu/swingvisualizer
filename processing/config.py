@@ -6,13 +6,13 @@ from typing import List, Dict;
 
 PROJECT_ROOT = Path(__file__).parent.parent;
 PROCESSING_DIR = PROJECT_ROOT / "processing";
-DATA_DIR = PROCESSING_DIR / "data";
+DATA_DIR = PROJECT_ROOT / "data";
 
 RAW_DATA_DIR = DATA_DIR / "raw";
 MIT_DIR = RAW_DATA_DIR / "mit-election-lab";
 CENSUS_DIR = RAW_DATA_DIR / "census-shapefiles";
 
-PROCESSED_DATA_DIR = RAW_DATA_DIR / "demographics";
+PROCESSED_DATA_DIR = DATA_DIR / "processed";
 ELECTIONS_DIR = PROCESSED_DATA_DIR / "elections";
 GEOJSON_DIR = PROCESSED_DATA_DIR / "geojson";
 TILES_DIR = PROCESSED_DATA_DIR / "tiles";
@@ -106,8 +106,8 @@ SWING_METHOD = "two_party"  # Options: "two_party", "margin", "percent_change"
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M"
 
 # UTILS =====================================================================
 
@@ -169,6 +169,6 @@ if __name__ == "__main__":
     print(f"Default Shapefile: {DEFAULT_SHAPEFILE_NAME}")
     print("\nDirectory Structure:")
     for name, exists in check_data_directory_structure().items():
-        status = "✓" if exists else "✗"
+        status = "OK" if exists else "ERROR"
         print(f"  {status} {name}")
     print("\n" + "=" * 70)
