@@ -54,7 +54,7 @@ def convert_to_geojson(gdf: gpd.GeoDataFrame, output_path, precision: int = 6):
         gdf = gdf.to_crs(geodetic_crs)
 
     # Save with coordinate precision
-    gdf.to_file(output_path, driver='GeoJSON', precision=precision)
+    gdf.to_file(output_path, driver='GeoJSON', layer_options={"COORDINATE_PRECISION": str(precision)})
     
     file_size = output_path.stat().st_size / 1024 / 1024
     logger.info(f"Saved GeoJSON: {file_size:.2f} MB")
