@@ -65,7 +65,16 @@ def load_election_year(year: int) -> pd.DataFrame:
     logger.info(f"Loading {year} data: {file_path.name}")
     df = pd.read_csv(file_path)
     
-    logger.info(f"  Loaded {len(df):,} counties")
+    # Check for duplicate FIPS codes
+    duplicates = df['fips'].duplicated().sum()
+    if duplicates > 0:
+        logger.warning(f"  WARNING: Found {duplicates} duplicate FIPS codes in {year} data!")
+        logger.warning(f"  Duplicate FIPS: {df[df['fips'].duplicated(keep=False)]['fips'].unique()[:10]}")
+        # Remove duplicates, keeping first occurrence
+        df = df.drop_duplicates(subset='fips', keep='first')
+        logger.info(f"  Removed duplicates, now have {len(df):,} counties")
+    else:
+        logger.info(f"  Loaded {len(df):,} counties (no duplicates)")
     
     return df
 
@@ -98,28 +107,71 @@ def calculate_two_party_swing(
     """
     logger.info(f"\nCalculating swing: {year1} -> {year2}")
     
-    # Select relevant columns and rename for clarity
+    # Select and rename columns for year 1
     y1 = year1_df[['fips', 'county', 'state', 'state_po', 'dem_share', 'rep_share', 
                     'DEMOCRAT', 'REPUBLICAN', 'total_votes', 'winner']].copy()
-    y1.columns = ['fips', 'county', 'state', 'state_po', 'dem_share_y1', 'rep_share_y1',
-                  'dem_votes_y1', 'rep_votes_y1', 'total_votes_y1', 'winner_y1']
+    y1 = y1.rename(columns={
+        'county': 'county_name',
+        'dem_share': 'dem_share_y1',
+        'rep_share': 'rep_share_y1',
+        'DEMOCRAT': 'dem_votes_y1',
+        'REPUBLICAN': 'rep_votes_y1',
+        'total_votes': 'total_votes_y1',
+        'winner': 'winner_y1'
+    })
     
+    # Select and rename columns for year 2
     y2 = year2_df[['fips', 'county', 'state', 'state_po', 'dem_share', 'rep_share',
                     'DEMOCRAT', 'REPUBLICAN', 'total_votes', 'winner']].copy()
-    y2.columns = ['fips', 'county', 'state', 'state_po', 'dem_share_y2', 'rep_share_y2',
-                  'dem_votes_y2', 'rep_votes_y2', 'total_votes_y2', 'winner_y2']
+    y2 = y2.rename(columns={
+        'county': 'county_name',
+        'dem_share': 'dem_share_y2',
+        'rep_share': 'rep_share_y2',
+        'DEMOCRAT': 'dem_votes_y2',
+        'REPUBLICAN': 'rep_votes_y2',
+        'total_votes': 'total_votes_y2',
+        'winner': 'winner_y2'
+    })
     
-    # Merge on FIPS (inner join - only counties present in both years)
-    swing_df = y1.merge(y2, on='fips', how='inner', suffixes=('', '_dup'))
+    # Store original counts for verification
+    original_y1_count = len(y1)
+    original_y2_count = len(y2)
     
-    # Keep only one set of identifying columns
-    swing_df = swing_df[['fips', 'county', 'state', 'state_po',
+    # Merge on FIPS
+    swing_df = y1.merge(y2, on='fips', how='inner', suffixes=('_y1', '_y2'))
+    
+    # Verify merge didn't create duplicates
+    if len(swing_df) > max(original_y1_count, original_y2_count):
+        logger.error(f"  ERROR: Merge created {len(swing_df)} rows from {original_y1_count} and {original_y2_count} inputs!")
+        logger.error("  This indicates duplicate FIPS codes in one or both datasets.")
+        raise ValueError("Duplicate FIPS codes detected in merge")
+    
+    logger.info(f"  Matched {len(swing_df):,} counties in both years")
+    logger.info(f"  Unmatched in {year1}: {original_y1_count - len(swing_df)}")
+    logger.info(f"  Unmatched in {year2}: {original_y2_count - len(swing_df)}")
+    
+    # Use county name from y1, verify consistency
+    swing_df['county'] = swing_df['county_name_y1']
+    
+    # Check for county name mismatches (same FIPS, different names)
+    name_mismatches = swing_df['county_name_y1'] != swing_df['county_name_y2']
+    if name_mismatches.any():
+        logger.warning(f"  Found {name_mismatches.sum()} counties with name changes:")
+        for _, row in swing_df[name_mismatches].head(5).iterrows():
+            logger.warning(f"    FIPS {row['fips']}: '{row['county_name_y1']}' -> '{row['county_name_y2']}'")
+    
+    # Select final columns
+    swing_df = swing_df[['fips', 'county', 'state_y1', 'state_po_y1',
                           'dem_share_y1', 'rep_share_y1', 'dem_votes_y1', 'rep_votes_y1', 
                           'total_votes_y1', 'winner_y1',
                           'dem_share_y2', 'rep_share_y2', 'dem_votes_y2', 'rep_votes_y2',
                           'total_votes_y2', 'winner_y2']]
     
-    logger.info(f"  Matched {len(swing_df):,} counties in both years")
+    # Rename state columns
+    swing_df = swing_df.rename(columns={
+        'state_y1': 'state',
+        'state_po_y1': 'state_po'
+    })
     
     # Calculate swing (change in Democratic two-party share)
     swing_df['swing'] = swing_df['dem_share_y2'] - swing_df['dem_share_y1']
@@ -149,12 +201,23 @@ def calculate_two_party_swing(
         axis=1
     )
     
-    # Turnout change
+    # Turnout change (handle division by zero)
     swing_df['turnout_change'] = swing_df['total_votes_y2'] - swing_df['total_votes_y1']
-    swing_df['turnout_change_pct'] = (
-        (swing_df['total_votes_y2'] - swing_df['total_votes_y1']) / 
-        swing_df['total_votes_y1'] * 100
-    ).round(2)
+    
+    # Safely calculate percentage change
+    zero_votes_y1 = swing_df['total_votes_y1'] == 0
+    if zero_votes_y1.any():
+        logger.warning(f"  Found {zero_votes_y1.sum()} counties with 0 votes in {year1} - cannot calculate turnout change %")
+        swing_df.loc[zero_votes_y1, 'turnout_change_pct'] = np.nan
+        swing_df.loc[~zero_votes_y1, 'turnout_change_pct'] = (
+            (swing_df.loc[~zero_votes_y1, 'total_votes_y2'] - swing_df.loc[~zero_votes_y1, 'total_votes_y1']) / 
+            swing_df.loc[~zero_votes_y1, 'total_votes_y1'] * 100
+        ).round(2)
+    else:
+        swing_df['turnout_change_pct'] = (
+            (swing_df['total_votes_y2'] - swing_df['total_votes_y1']) / 
+            swing_df['total_votes_y1'] * 100
+        ).round(2)
     
     # Add year labels
     swing_df['year1'] = year1
@@ -211,7 +274,12 @@ def analyze_swing(swing_df: pd.DataFrame, year1: int, year2: int) -> Dict:
     logger.info(f"  Total county flips: {analysis['total_flips']:,}")
     logger.info(f"    Democrat -> Republican: {analysis['dem_to_rep']:,}")
     logger.info(f"    Republican -> Democrat: {analysis['rep_to_dem']:,}")
-    logger.info(f"  Average turnout change: {analysis['avg_turnout_change_pct']:+.1f}%")
+    
+    # Handle NaN in turnout change
+    if pd.isna(analysis['avg_turnout_change_pct']):
+        logger.info("  Average turnout change: N/A (division by zero)")
+    else:
+        logger.info(f"  Average turnout change: {analysis['avg_turnout_change_pct']:+.1f}%")
     
     return analysis
 
@@ -268,7 +336,7 @@ def identify_bellwether_counties(all_swings: List[pd.DataFrame]) -> pd.DataFrame
     
     if not bellwether_df.empty:
         logger.info(f"  Analyzed {len(bellwether_df):,} counties across all periods")
-        logger.info(f"  Most volatile: {bellwether_df.nlargest(5, 'avg_swing_magnitude')[['county', 'state', 'avg_swing_magnitude']].to_string(index=False)}")
+        logger.info(f"  Most volatile:\n{bellwether_df.nlargest(5, 'avg_swing_magnitude')[['county', 'state', 'avg_swing_magnitude']].to_string(index=False)}")
     
     return bellwether_df
 
