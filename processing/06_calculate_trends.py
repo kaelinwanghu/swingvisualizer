@@ -7,6 +7,7 @@ This script:
 2. Calculates trend metrics (stability, volatility, trajectory)
 3. Classifies counties (solid, lean, swing, bellwether)
 4. Adds metrics back to each year's GeoJSON file
+5. FIXES boolean fields (flipped) and handles NaN values properly
 
 Usage:
     python processing/06_calculate_trends.py [--recalculate]
@@ -41,6 +42,50 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# DATA CLEANING
+# ============================================================================
+
+def clean_boolean_field(value) -> bool:
+    """
+    Convert string/mixed boolean values to proper Python bool.
+    
+    Args:
+        value: Value to convert
+        
+    Returns:
+        Boolean value
+    """
+    if pd.isna(value):
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ['true', '1', 'yes']
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
+def clean_numeric_field(value, default=0.0):
+    """
+    Clean numeric field, handling NaN values.
+    
+    Args:
+        value: Value to clean
+        default: Default value if NaN
+        
+    Returns:
+        Cleaned numeric value
+    """
+    if pd.isna(value):
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+# ============================================================================
 # TREND CALCULATIONS
 # ============================================================================
 
@@ -58,7 +103,7 @@ def calculate_county_trends(county_history: pd.DataFrame) -> Dict[str, Any]:
     county_history = county_history.sort_values('year')
     
     metrics: Dict[str, Any] = {
-        'years_with_data': len(county_history),
+        'years_with_data': int(len(county_history)),
         'first_year': int(county_history['year'].min()),
         'last_year': int(county_history['year'].max())
     }
@@ -68,9 +113,8 @@ def calculate_county_trends(county_history: pd.DataFrame) -> Dict[str, Any]:
         return {**metrics, 'classification': 'INSUFFICIENT_DATA'}
     
     # Get margins (positive = Dem, negative = Rep)
-    # Use to_numpy() instead of .values for proper type inference
-    margins = county_history['margin'].to_numpy()
-    winners = county_history['winner'].to_numpy()
+    margins = county_history['margin'].fillna(0).to_numpy()
+    winners = county_history['winner'].fillna('UNKNOWN').to_numpy()
     
     # === STABILITY METRICS ===
     
@@ -91,13 +135,18 @@ def calculate_county_trends(county_history: pd.DataFrame) -> Dict[str, Any]:
     # How often did each party win?
     dem_wins = int(np.sum(winners == 'DEMOCRAT'))
     rep_wins = int(np.sum(winners == 'REPUBLICAN'))
-    metrics['dem_win_pct'] = dem_wins / len(winners) * 100
-    metrics['rep_win_pct'] = rep_wins / len(winners) * 100
+    total_known = dem_wins + rep_wins
+    
+    if total_known > 0:
+        metrics['dem_win_pct'] = float(dem_wins / total_known * 100)
+        metrics['rep_win_pct'] = float(rep_wins / total_known * 100)
+    else:
+        metrics['dem_win_pct'] = 0.0
+        metrics['rep_win_pct'] = 0.0
     
     # === TRAJECTORY (Linear Trend) ===
     
     # Is the county moving left or right?
-    # Linear regression: margin = slope * year + intercept
     years_numeric = county_history['year'].to_numpy()
     if len(years_numeric) >= 3:
         # Normalize years to prevent overflow
@@ -120,13 +169,16 @@ def calculate_county_trends(county_history: pd.DataFrame) -> Dict[str, Any]:
     
     # Calculate swing magnitudes
     if 'swing' in county_history.columns:
-        swings = county_history['swing'].dropna().to_numpy()
+        swings = county_history['swing'].fillna(0).to_numpy()
         if len(swings) > 0:
             metrics['avg_swing_magnitude'] = float(np.mean(np.abs(swings)))
             metrics['max_swing'] = float(np.max(np.abs(swings)))
         else:
             metrics['avg_swing_magnitude'] = 0.0
             metrics['max_swing'] = 0.0
+    else:
+        metrics['avg_swing_magnitude'] = 0.0
+        metrics['max_swing'] = 0.0
     
     # === COMPETITIVENESS ===
     
@@ -139,14 +191,11 @@ def calculate_county_trends(county_history: pd.DataFrame) -> Dict[str, Any]:
     
     # === CLASSIFICATION ===
     
-    # Determine county classification
     metrics['classification'] = classify_county(metrics)
     
     # === BELLWETHER SCORE ===
     
-    # Compare to national popular vote winner (simplified heuristic)
-    # You could enhance this by loading actual national results
-    metrics['bellwether_score'] = calculate_bellwether_score(county_history)
+    metrics['bellwether_score'] = float(calculate_bellwether_score(county_history))
     
     return metrics
 
@@ -159,7 +208,7 @@ def classify_county(metrics: Dict[str, Any]) -> str:
     - SOLID_DEM / SOLID_REP: Consistently one party, rarely competitive
     - LEAN_DEM / LEAN_REP: Usually one party, occasionally competitive
     - SWING: Frequently flips or highly competitive
-    - BELLWETHER: Swing county that matches national trends
+    - COMPETITIVE: Close elections, leans slightly one way
     
     Args:
         metrics: Dictionary with calculated metrics
@@ -197,7 +246,6 @@ def calculate_bellwether_score(county_history: pd.DataFrame) -> float:
     """
     Calculate how well county predicts national winner.
     
-    Simplified version - compares to actual election outcomes.
     Score of 100 = perfect bellwether, 0 = always wrong
     
     Args:
@@ -214,17 +262,17 @@ def calculate_bellwether_score(county_history: pd.DataFrame) -> float:
         2012: 'DEMOCRAT',
         2016: 'DEMOCRAT',   # Clinton won popular vote
         2020: 'DEMOCRAT',
-        2024: 'REPUBLICAN'  # Update this based on actual results
+        2024: 'REPUBLICAN'
     }
     
-    # Count how many times county winner matched national winner
     matches = 0
     total = 0
     
     for _, row in county_history.iterrows():
         year = int(row['year'])
         if year in NATIONAL_WINNERS:
-            if str(row['winner']) == NATIONAL_WINNERS[year]:
+            winner = str(row['winner']) if pd.notna(row['winner']) else 'UNKNOWN'
+            if winner == NATIONAL_WINNERS[year]:
                 matches += 1
             total += 1
     
@@ -256,6 +304,10 @@ def load_all_county_data() -> pd.DataFrame:
         # Load GeoJSON and convert to DataFrame (without geometry for speed)
         gdf = gpd.read_file(file_path)
         df = pd.DataFrame(gdf.drop(columns='geometry'))
+        
+        # Fix boolean fields that might be strings
+        if 'flipped' in df.columns:
+            df['flipped'] = df['flipped'].apply(clean_boolean_field)
         
         all_data.append(df)
         logger.info(f"  Loaded {year}: {len(df):,} counties")
@@ -305,6 +357,8 @@ def merge_trends_into_geojson(year: int, trends_df: pd.DataFrame) -> bool:
     """
     Merge trend data back into a year's GeoJSON file.
     
+    Also fixes any data type issues (booleans, NaN values).
+    
     Args:
         year: Election year
         trends_df: DataFrame with trend metrics
@@ -318,18 +372,45 @@ def merge_trends_into_geojson(year: int, trends_df: pd.DataFrame) -> bool:
         logger.warning(f"  File not found: {file_path}")
         return False
     
-    logger.info(f"\nAdding trends to {year}...")
+    logger.info(f"\nProcessing {year}...")
     
     # Load GeoJSON
     gdf = gpd.read_file(file_path)
     logger.info(f"  Loaded {len(gdf):,} counties")
     
-    # Merge trends
-    gdf = gdf.merge(trends_df, on='fips', how='left')
+    # Fix boolean fields before merge
+    if 'flipped' in gdf.columns:
+        logger.info("  Fixing 'flipped' field...")
+        gdf['flipped'] = gdf['flipped'].apply(clean_boolean_field)
     
-    # Count how many got trends added
-    with_trends = gdf['classification'].notna().sum()
-    logger.info(f"  Added trends to {with_trends:,} counties")
+    # Merge trends
+    # Drop any duplicate columns first to avoid conflicts
+    duplicate_cols = [col for col in trends_df.columns if col in gdf.columns and col != 'fips']
+    if duplicate_cols:
+        logger.info(f"  Dropping duplicate columns before merge: {duplicate_cols}")
+        gdf = gdf.drop(columns=duplicate_cols)
+    
+    gdf = gdf.merge(trends_df, on='fips', how='left')
+    logger.info("  Merged trends data")
+    
+    # Count how many got trends added (check if classification exists)
+    if 'classification' in gdf.columns:
+        with_trends = gdf['classification'].notna().sum()
+        logger.info(f"  Added trends to {with_trends:,} counties")
+    else:
+        logger.warning(f"  Warning: 'classification' column not found after merge")
+    
+    # Fill NaN values with appropriate defaults
+    numeric_cols = gdf.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        if col not in ['geometry']:
+            gdf[col] = gdf[col].fillna(0)
+    
+    # Fill string NaN with empty string or appropriate default
+    string_cols = gdf.select_dtypes(include=['object']).columns
+    for col in string_cols:
+        if col not in ['geometry']:
+            gdf[col] = gdf[col].fillna('')
     
     # Save back to GeoJSON
     output_file = COMBINED_DIR / f"election_map_{year}.geojson"
@@ -428,6 +509,10 @@ def main():
         # Load all data
         all_data = load_all_county_data()
         
+        if all_data.empty:
+            logger.error("No data loaded. Please run previous pipeline steps.")
+            return 1
+        
         # Calculate trends
         trends_df = calculate_all_trends(all_data)
         
@@ -436,8 +521,12 @@ def main():
         logger.info("MERGING TRENDS INTO GEOJSON FILES")
         logger.info("=" * 70)
         
+        success_count = 0
         for year in ELECTION_YEARS:
-            merge_trends_into_geojson(year, trends_df)
+            if merge_trends_into_geojson(year, trends_df):
+                success_count += 1
+        
+        logger.info(f"\nSuccessfully updated {success_count}/{len(ELECTION_YEARS)} years")
         
         # Export summaries
         export_classification_summary(trends_df)
