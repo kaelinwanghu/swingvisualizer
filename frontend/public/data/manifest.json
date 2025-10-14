@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2025-10-13T21:22:29.974943",
+  "description": "Election swing visualization data",
+  "usage": {
+    "geometry": "Load once on app initialization",
+    "elections": "Load on-demand when user selects a year"
+  },
+  "files": {
+    "geometry": {
+      "path": "geojson/counties.geojson",
+      "size_mb": 11.49,
+      "counties": null,
+      "description": "Base county geometries - load once and reuse"
+    },
+    "elections": {
+      "2000": {
+        "path": "elections/elections_2000.json",
+        "size_kb": 1913.5
+      },
+      "2004": {
+        "path": "elections/elections_2004.json",
+        "size_kb": 2356.6
+      },
+      "2008": {
+        "path": "elections/elections_2008.json",
+        "size_kb": 2353.3
+      },
+      "2012": {
+        "path": "elections/elections_2012.json",
+        "size_kb": 2358.5
+      },
+      "2016": {
+        "path": "elections/elections_2016.json",
+        "size_kb": 2363.0
+      },
+      "2020": {
+        "path": "elections/elections_2020.json",
+        "size_kb": 2437.7
+      },
+      "2024": {
+        "path": "elections/elections_2024.json",
+        "size_kb": 2413.9
+      }
+    }
+  },
+  "available_years": [
+    2000,
+    2004,
+    2008,
+    2012,
+    2016,
+    2020,
+    2024
+  ],
+  "summary": {
+    "total_years": 7,
+    "geometry_size_mb": 11.49,
+    "total_election_data_mb": 15.82,
+    "estimated_total_load_mb": 27.31
+  }
+}
