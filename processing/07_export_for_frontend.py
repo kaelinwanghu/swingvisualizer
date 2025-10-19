@@ -196,7 +196,7 @@ def extract_base_geometry(
     Args:
         source_geojson: Source GeoJSON file (any year)
         output_dir: Output directory
-        
+
     Returns:
         Path to created geometry file
     """
