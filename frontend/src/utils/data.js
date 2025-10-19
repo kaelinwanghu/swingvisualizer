@@ -23,9 +23,9 @@ export async function loadElectionData(year, viewMode) {
     if (!lines[i].trim()) continue;
     const values = lines[i].split(',');
     const row = {};
-    headers.forEach((header, idx) => {
+    for (const [idx, header] of headers.entries()) {
       row[header] = values[idx]?.trim();
-    });
+    }
     data[row.fips] = row;
   }
   
@@ -48,12 +48,12 @@ export function mergeElectionWithGeometry(geoData, electionData) {
         properties: {
           ...feature.properties,
           ...data,
-          dem_share: parseFloat(data.dem_share || data.dem_share_y2 || 0),
-          rep_share: parseFloat(data.rep_share || data.rep_share_y2 || 0),
-          swing: parseFloat(data.swing || 0),
-          total_votes: parseInt(data.total_votes || data.total_votes_y2 || 0),
-          DEMOCRAT: parseInt(data.DEMOCRAT || data.dem_votes_y2 || 0),
-          REPUBLICAN: parseInt(data.REPUBLICAN || data.rep_votes_y2 || 0),
+          dem_share: Number.parseFloat(data.dem_share || data.dem_share_y2 || 0),
+          rep_share: Number.parseFloat(data.rep_share || data.rep_share_y2 || 0),
+          swing: Number.parseFloat(data.swing || 0),
+          total_votes: Number.parseInt(data.total_votes || data.total_votes_y2 || 0),
+          DEMOCRAT: Number.parseInt(data.DEMOCRAT || data.dem_votes_y2 || 0),
+          REPUBLICAN: Number.parseInt(data.REPUBLICAN || data.rep_votes_y2 || 0),
           flipped: data.flipped === 'True' || data.flipped === true
         }
       };
