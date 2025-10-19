@@ -1,7 +1,7 @@
 import React from 'react';
 import { Controls } from './Controls';
 import { CountyDetails } from './CountyDetails';
-import { Map } from './Map';
+import { Map } from './ElectionMap';
 
 export function Layout() {
   return (
