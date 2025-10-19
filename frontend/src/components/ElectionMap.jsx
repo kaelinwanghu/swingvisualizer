@@ -3,7 +3,7 @@ import { useAppContext } from '../store/AppContext';
 import { getCountyColor } from '../utils/colors';
 import { PARTY_COLORS } from '../constants';
 
-export function Map() {
+export function ElectionMap() {
   const { countyData, viewMode, setSelectedCounty, loading, error } = useAppContext();
 
   if (loading) {
