@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Map, { Source, Layer } from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import { useAppContext } from '../store/AppContext';
 import { getCountyColor } from '../utils/colors';
 import { PARTY_COLORS } from '../constants';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+// console.log('Mapbox token exists:', !!MAPBOX_TOKEN);
 
 export function ElectionMap() {
   const mapRef = useRef(null);

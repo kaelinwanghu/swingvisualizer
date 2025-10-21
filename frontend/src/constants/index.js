@@ -13,7 +13,9 @@ export const VIEW_MODES = {
   SWING: 'swing'
 };
 
+const BASE_URL = import.meta.env.BASE_URL;
+
 export const DATA_PATHS = {
-  ELECTIONS: '/data/elections/',
-  GEOJSON: '/data/geojson/',
+  ELECTIONS: `${BASE_URL}data/elections/`,
+  GEOJSON: `${BASE_URL}data/geojson/`,
 };
