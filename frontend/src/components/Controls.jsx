@@ -1,9 +1,18 @@
 import React from 'react';
 import { useAppContext } from '../store/AppContext';
 import { ELECTION_YEARS, PARTY_COLORS } from '../constants';
+import { hasSwingData } from '../utils/data';
 
 export function Controls() {
   const { selectedYear, setSelectedYear, viewMode, setViewMode } = useAppContext();
+  const swingAvailable = hasSwingData(selectedYear);
+
+  const handleYearChange = (newYear) => {
+    setSelectedYear(newYear);
+    if (newYear === 2000 && viewMode === 'swing') {
+      setViewMode('absolute');
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -14,9 +23,8 @@ export function Controls() {
           Election Year
         </label>
         <select
-          id="year-select"
           value={selectedYear}
-          onChange={(e) => setSelectedYear(Number(e.target.value))}
+          onChange={(e) => handleYearChange(Number(e.target.value))}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {ELECTION_YEARS.map(year => (
@@ -42,19 +50,26 @@ export function Controls() {
           </button>
           <button
             onClick={() => setViewMode('swing')}
+            disabled={!swingAvailable}
             className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               viewMode === 'swing'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            } ${selectedYear === 2000 ? 'opacity-50 cursor-not-allowed' : ''}`}
-            disabled={selectedYear === 2000}
+                : swingAvailable 
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
           >
             Swing
           </button>
         </div>
-        {viewMode === 'swing' && selectedYear > 2000 && (
+        {viewMode === 'swing' && swingAvailable && (
           <p className="text-xs text-gray-500 mt-2">
             Showing change from {ELECTION_YEARS[ELECTION_YEARS.indexOf(selectedYear) - 1]} to {selectedYear}
+          </p>
+        )}
+        {!swingAvailable && (
+          <p className="text-xs text-gray-500 mt-2">
+            Swing mode not available for {selectedYear} (first year)
           </p>
         )}
       </div>

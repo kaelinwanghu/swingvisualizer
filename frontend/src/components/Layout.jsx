@@ -1,7 +1,7 @@
 import React from 'react';
 import { Controls } from './Controls';
 import { CountyDetails } from './CountyDetails';
-import { Map } from './ElectionMap';
+import { ElectionMap } from './ElectionMap';
 
 export function Layout() {
   return (
@@ -22,7 +22,7 @@ export function Layout() {
 
           <main className="lg:col-span-3">
             <div className="bg-white rounded-lg shadow-lg overflow-hidden" style={{ height: '600px' }}>
-              <Map />
+              <ElectionMap />
             </div>
           </main>
         </div>

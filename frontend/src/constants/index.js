@@ -12,3 +12,8 @@ export const VIEW_MODES = {
   ABSOLUTE: 'absolute',
   SWING: 'swing'
 };
+
+export const DATA_PATHS = {
+  ELECTIONS: '/data/elections/',
+  GEOJSON: '/data/geojson/',
+};

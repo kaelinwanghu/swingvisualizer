@@ -54,7 +54,6 @@ export function ElectionMap() {
 
     const map = mapRef.current.getMap();
     
-    // Create color expression based on current mode
     const colorExpression = ['case'];
     
     for (const feature of countyData.features) {

@@ -1,40 +1,34 @@
-export async function loadElectionData(year, viewMode) {
-  let dataUrl;
-  if (viewMode === 'absolute') {
-    dataUrl = `/data/elections_${year}.csv`;
-  } else {
-    // Find previous year for swing calculation
-    const years = [2000, 2004, 2008, 2012, 2016, 2020, 2024];
-    const currentIndex = years.indexOf(year);
-    if (currentIndex <= 0) return null;
-    const prevYear = years[currentIndex - 1];
-    dataUrl = `/data/swings_${prevYear}_to_${year}.csv`;
-  }
+import { DATA_PATHS } from '../constants';
 
-  const response = await fetch(dataUrl);
-  const csvText = await response.text();
+export async function loadElectionData(year) {
+  const dataUrl = `${DATA_PATHS.ELECTIONS}elections_${year}.json`;
   
-  // Simple CSV parsing
-  const lines = csvText.split('\n');
-  const headers = lines[0].split(',').map(h => h.trim());
-  const data = {};
-  
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    const values = lines[i].split(',');
-    const row = {};
-    for (const [idx, header] of headers.entries()) {
-      row[header] = values[idx]?.trim();
+  try {
+    const response = await fetch(dataUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to load data for ${year}: ${response.statusText}`);
     }
-    data[row.fips] = row;
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`Error loading election data for ${year}:`, error);
+    throw error;
   }
-  
-  return data;
 }
 
 export async function loadCountyGeometry() {
-  const response = await fetch('/data/counties.geojson');
-  return response.json();
+  const geoUrl = `${DATA_PATHS.GEOJSON}counties.geojson`;
+  
+  try {
+    const response = await fetch(geoUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to load county geometry: ${response.statusText}`);
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Error loading county geometry:', error);
+    throw error;
+  }
 }
 
 export function mergeElectionWithGeometry(geoData, electionData) {
@@ -42,21 +36,41 @@ export function mergeElectionWithGeometry(geoData, electionData) {
     ...geoData,
     features: geoData.features.map(feature => {
       const fips = feature.properties.fips;
-      const data = electionData[fips] || {};
+      const countyData = electionData[fips];
+      
+      if (!countyData) {
+        return {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            hasData: false
+          }
+        };
+      }
+      
       return {
         ...feature,
         properties: {
           ...feature.properties,
-          ...data,
-          dem_share: Number.parseFloat(data.dem_share || data.dem_share_y2 || 0),
-          rep_share: Number.parseFloat(data.rep_share || data.rep_share_y2 || 0),
-          swing: Number.parseFloat(data.swing || 0),
-          total_votes: Number.parseInt(data.total_votes || data.total_votes_y2 || 0),
-          DEMOCRAT: Number.parseInt(data.DEMOCRAT || data.dem_votes_y2 || 0),
-          REPUBLICAN: Number.parseInt(data.REPUBLICAN || data.rep_votes_y2 || 0),
-          flipped: data.flipped === 'True' || data.flipped === true
+          ...countyData,
+          hasData: true,
+          dem_share: Number(countyData.dem_share || 0),
+          rep_share: Number(countyData.rep_share || 0),
+          swing: Number(countyData.swing || 0),
+          swing_magnitude: Number(countyData.swing_magnitude || 0),
+          margin: Number(countyData.margin || 0),
+          margin_change: Number(countyData.margin_change || 0),
+          total_votes: Number(countyData.total_votes || 0),
+          DEMOCRAT: Number(countyData.DEMOCRAT || 0),
+          REPUBLICAN: Number(countyData.REPUBLICAN || 0),
+          flipped: countyData.flipped === 1 || countyData.flipped === true,
+          year: Number(countyData.year)
         }
       };
     })
   };
+}
+
+export function hasSwingData(year) {
+  return year > 2000;
 }

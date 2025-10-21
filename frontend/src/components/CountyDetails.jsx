@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAppContext } from '../store/AppContext';
 import { formatNumber, formatPercent } from '../utils/format';
-import { ELECTION_YEARS } from '../constants';
 
 export function CountyDetails() {
   const { selectedCounty, selectedYear, viewMode } = useAppContext();
@@ -14,11 +13,22 @@ export function CountyDetails() {
     );
   }
 
-  const county = selectedCounty.properties || {};
+  const county = selectedCounty.properties;
+  
+  if (!county.hasData) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h3 className="font-bold text-xl mb-1">{county.county_name || county.county}</h3>
+        <p className="text-sm text-gray-600 mb-4">{county.state}</p>
+        <p className="text-sm text-gray-500">No election data available for this county</p>
+      </div>
+    );
+  }
+
   const demShare = county.dem_share || 0;
   const repShare = county.rep_share || 0;
-  const winner = demShare > repShare ? 'Democrat' : 'Republican';
-  const margin = Math.abs(demShare - repShare);
+  const winner = county.winner || (demShare > repShare ? 'DEMOCRAT' : 'REPUBLICAN');
+  const margin = Math.abs(county.margin || 0);
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
@@ -30,9 +40,9 @@ export function CountyDetails() {
           <div className="flex justify-between items-center pb-3 border-b">
             <span className="text-sm font-medium text-gray-700">Winner:</span>
             <span className={`text-base font-bold ${
-              winner === 'Democrat' ? 'text-blue-700' : 'text-red-700'
+              winner === 'DEMOCRAT' ? 'text-blue-700' : 'text-red-700'
             }`}>
-              {winner} +{formatPercent(margin)}
+              {winner === 'DEMOCRAT' ? 'Democrat' : 'Republican'} +{formatPercent(margin)}
             </span>
           </div>
 
@@ -74,34 +84,78 @@ export function CountyDetails() {
               <span className="font-medium text-gray-900">{formatNumber(county.REPUBLICAN || 0)}</span>
             </div>
           </div>
+
+          {county.classification && (
+            <div className="border-t pt-3">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Classification:</span>
+                <span className="font-medium text-gray-900">
+                  {county.classification.replace('_', ' ')}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {viewMode === 'swing' && county.swing !== undefined && (
+      {viewMode === 'swing' && selectedYear > 2000 && (
         <div className="space-y-4">
           <div className="flex justify-between items-center pb-3 border-b">
             <span className="text-sm font-medium text-gray-700">Swing:</span>
             <span className={`text-base font-bold ${
-              county.swing > 0 ? 'text-blue-700' : 'text-red-700'
+              (county.swing || 0) > 0 ? 'text-blue-700' : 'text-red-700'
             }`}>
-              {county.swing > 0 ? 'D +' : 'R +'}{formatPercent(Math.abs(county.swing))}
+              {(county.swing || 0) > 0 ? 'D +' : 'R +'}
+              {formatPercent(Math.abs(county.swing || 0))}
             </span>
           </div>
 
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
-              <span>{ELECTION_YEARS[ELECTION_YEARS.indexOf(selectedYear) - 1]} Result:</span>
-              <span className="font-medium text-gray-900">{formatPercent(county.dem_share_y1 || 0)} D</span>
+              <span>Swing Direction:</span>
+              <span className="font-medium text-gray-900">
+                {county.swing_direction || 'N/A'}
+              </span>
             </div>
             <div className="flex justify-between text-gray-600">
-              <span>{selectedYear} Result:</span>
-              <span className="font-medium text-gray-900">{formatPercent(county.dem_share_y2 || demShare)} D</span>
+              <span>Margin Change:</span>
+              <span className="font-medium text-gray-900">
+                {formatPercent(Math.abs(county.margin_change || 0))}
+              </span>
             </div>
-            {county.flipped && (
-              <div className="mt-3 px-3 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg text-center font-medium">
-                🔄 County Flipped!
+            <div className="flex justify-between text-gray-600">
+              <span>Turnout Change:</span>
+              <span className="font-medium text-gray-900">
+                {county.turnout_change_pct ? `${county.turnout_change_pct.toFixed(1)}%` : 'N/A'}
+              </span>
+            </div>
+          </div>
+
+          {county.flipped && (
+            <div className="mt-3 px-3 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg text-center font-medium">
+              🔄 County Flipped!
+              <div className="text-xs mt-1">{county.flip_direction}</div>
+            </div>
+          )}
+
+          <div className="border-t pt-3">
+            <p className="text-xs font-medium text-gray-500 mb-2">{selectedYear} Results</p>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between text-gray-600">
+                <span>Democrat:</span>
+                <span className="font-medium text-gray-900">{formatPercent(demShare)}</span>
               </div>
-            )}
+              <div className="flex justify-between text-gray-600">
+                <span>Republican:</span>
+                <span className="font-medium text-gray-900">{formatPercent(repShare)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Winner:</span>
+                <span className={`font-medium ${winner === 'DEMOCRAT' ? 'text-blue-700' : 'text-red-700'}`}>
+                  {winner === 'DEMOCRAT' ? 'Democrat' : 'Republican'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
 
 const AppContext = createContext();
+
 export function AppProvider({ children }) {
   const [selectedYear, setSelectedYear] = useState(2024);
   const [viewMode, setViewMode] = useState('absolute');
