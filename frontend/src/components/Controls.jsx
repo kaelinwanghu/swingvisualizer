@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppContext } from '../store/AppContext';
+import { useAppContext } from '../store/useAppContext';
 import { ELECTION_YEARS, PARTY_COLORS } from '../constants';
 import { hasSwingData } from '../utils/data';
 

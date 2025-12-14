@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAppContext } from '../store/AppContext';
+import { useAppContext } from '../store/useAppContext';
 import { formatNumber, formatPercent } from '../utils/format';
 
 export function CountyDetails() {

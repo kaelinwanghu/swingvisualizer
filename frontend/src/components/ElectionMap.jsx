@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Map, { Source, Layer } from 'react-map-gl';
-import { useAppContext } from '../store/AppContext';
+import { useAppContext } from '../store/useAppContext';
 import { getCountyColor } from '../utils/colors';
 import { PARTY_COLORS } from '../constants';
 

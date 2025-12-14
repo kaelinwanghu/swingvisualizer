@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAppContext } from '../store/AppContext';
+import { useAppContext } from '../store/useAppContext';
 import { loadElectionData, loadCountyGeometry, mergeElectionWithGeometry, hasSwingData } from '../utils/data';
 
 export function useElectionData() {

@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-
-const AppContext = createContext();
+import { AppContext } from './AppContextValue';
 
 export function AppProvider({ children }) {
   const [selectedYear, setSelectedYear] = useState(2024);
@@ -36,11 +35,3 @@ export function AppProvider({ children }) {
 AppProvider.propTypes = {
   children: PropTypes.node.isRequired
 };
-
-export function useAppContext() {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useAppContext must be used within AppProvider');
-  }
-  return context;
-}
