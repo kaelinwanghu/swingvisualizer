@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import Map, { Source, Layer } from 'react-map-gl';
 import { useAppContext } from '../store/useAppContext';
 import { getCountyColor } from '../utils/colors';
@@ -8,94 +8,116 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
 export function ElectionMap() {
   const mapRef = useRef(null);
-  const { countyData, viewMode, setSelectedCounty, loading, error } = useAppContext();
+
+  const {
+    countyData,
+    selectedYear,
+    viewMode,
+    setSelectedCounty,
+    loading,
+    error,
+  } = useAppContext();
+
   const [viewState, setViewState] = useState({
     longitude: -98.5795,
     latitude: 39.8283,
-    zoom: 4
+    zoom: 4,
   });
+
   const [hoverInfo, setHoverInfo] = useState(null);
 
-  // County fill layer style
-  const countyFillLayer = {
-    id: 'county-fills',
-    type: 'fill',
-    paint: {
-      'fill-color': [
-        'case',
-        ['has', 'dem_share'],
-        // Will be set dynamically based on data
-        '#cccccc',
-        '#cccccc'
-      ],
-      'fill-opacity': [
-        'case',
-        ['boolean', ['feature-state', 'hover'], false],
-        0.9,
-        0.7
-      ]
-    }
-  };
+  /**
+   * Build a NEW GeoJSON object with a derived `fillColor` property per feature.
+   * This makes styling declarative: Mapbox just reads `fillColor` from each feature.
+   */
+  const styledCountyData = useMemo(() => {
+    if (!countyData) return null;
 
-  // County border layer style
-  const countyBorderLayer = {
-    id: 'county-borders',
-    type: 'line',
-    paint: {
-      'line-color': '#ffffff',
-      'line-width': 0.5
-    }
-  };
+    // Avoid mutating original features.
+    const features = countyData.features.map((feature) => {
+      const props = feature.properties || {};
 
-  // Update colors when data or mode changes
-  useEffect(() => {
-    if (!countyData || !mapRef.current) return;
+      const value =
+        viewMode === 'absolute' ? props.dem_share : props.swing;
 
-    const map = mapRef.current.getMap();
-    
-    const colorExpression = ['case'];
-    
-    for (const feature of countyData.features) {
-      const value = viewMode === 'absolute' 
-        ? feature.properties.dem_share 
-        : feature.properties.swing;
-      
-      if (value !== undefined && value !== null) {
-        const color = getCountyColor(value, viewMode, PARTY_COLORS);
-        colorExpression.push(
-          ['==', ['get', 'fips'], feature.properties.fips],
-          color
-        );
-      }
-    }
-    
-    colorExpression.push('#cccccc'); // default color
-    
-    if (map.getLayer('county-fills')) {
-      map.setPaintProperty('county-fills', 'fill-color', colorExpression);
-    }
+      const fillColor =
+        props.hasData && value != null
+          ? getCountyColor(value, viewMode, PARTY_COLORS)
+          : '#cccccc';
+
+      return {
+        ...feature,
+        properties: {
+          ...props,
+          fillColor,
+        },
+      };
+    });
+
+    return {
+      ...countyData,
+      features,
+    };
   }, [countyData, viewMode]);
 
-  const onMapClick = (event) => {
-    const feature = event.features?.[0];
-    if (feature) {
-      setSelectedCounty(feature);
-    }
-  };
+  // Layers: paint reads from feature properties
+  const countyFillLayer = useMemo(
+    () => ({
+      id: 'county-fills',
+      type: 'fill',
+      paint: {
+        // Use the per-feature computed color; fall back to gray
+        'fill-color': ['coalesce', ['get', 'fillColor'], '#cccccc'],
+        'fill-opacity': 0.7,
+      },
+    }),
+    []
+  );
 
-  const onMouseMove = (event) => {
+  const countyBorderLayer = useMemo(
+    () => ({
+      id: 'county-borders',
+      type: 'line',
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': 0.5,
+      },
+    }),
+    []
+  );
+
+  const onMapClick = useCallback(
+    (event) => {
+      const feature = event.features?.[0];
+      if (feature) {
+        setSelectedCounty(feature);
+      }
+    },
+    [setSelectedCounty]
+  );
+
+  /**
+   * IMPORTANT: use screen pixel coords for tooltip positioning.
+   * Your old code used lng/lat as CSS pixels which is wrong.
+   */
+  const onMouseMove = useCallback((event) => {
     const feature = event.features?.[0];
-    if (feature) {
-      setHoverInfo({
-        longitude: event.lngLat.lng,
-        latitude: event.lngLat.lat,
-        countyName: feature.properties.county_name || feature.properties.county,
-        state: feature.properties.state
-      });
-    } else {
+    if (!feature) {
       setHoverInfo(null);
+      return;
     }
-  };
+
+    setHoverInfo({
+      x: event.point.x,
+      y: event.point.y,
+      countyName: feature.properties.county_name || feature.properties.county,
+      state: feature.properties.state,
+    });
+  }, []);
+
+  const onMouseLeave = useCallback(() => {
+    setHoverInfo(null);
+  }, []);
 
   if (loading) {
     return (
@@ -119,7 +141,7 @@ export function ElectionMap() {
     );
   }
 
-  if (!countyData) {
+  if (!styledCountyData) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-gray-50">
         <p className="text-gray-600">No data available</p>
@@ -132,32 +154,38 @@ export function ElectionMap() {
       <Map
         ref={mapRef}
         {...viewState}
-        onMove={evt => setViewState(evt.viewState)}
+        onMove={(evt) => setViewState(evt.viewState)}
         mapStyle="mapbox://styles/mapbox/light-v11"
         mapboxAccessToken={MAPBOX_TOKEN}
         interactiveLayerIds={['county-fills']}
         onClick={onMapClick}
         onMouseMove={onMouseMove}
-        onMouseLeave={() => setHoverInfo(null)}
+        onMouseLeave={onMouseLeave}
+        reuseMaps
       >
-        <Source id="counties" type="geojson" data={countyData}>
+        <Source
+          // Keying by year+mode ensures React/Mapbox don't get “stuck” reusing the wrong source instance
+          key={`counties-${selectedYear}-${viewMode}`}
+          id="counties"
+          type="geojson"
+          data={styledCountyData}
+        >
           <Layer {...countyFillLayer} />
           <Layer {...countyBorderLayer} />
         </Source>
       </Map>
 
-      {/* Hover tooltip */}
       {hoverInfo && (
         <div
-          className="absolute bg-white px-3 py-2 rounded shadow-lg pointer-events-none text-sm"
+          className="absolute bg-white px-3 py-2 rounded shadow-lg pointer-events-none text-sm z-10 border border-gray-200"
           style={{
-            left: hoverInfo.longitude,
-            top: hoverInfo.latitude,
-            transform: 'translate(-50%, -120%)'
+            left: hoverInfo.x,
+            top: hoverInfo.y,
+            transform: 'translate(-50%, -120%)',
           }}
         >
           <div className="font-semibold">{hoverInfo.countyName}</div>
-          <div className="text-gray-600">{hoverInfo.state}</div>
+          <div className="text-gray-600 text-xs">{hoverInfo.state}</div>
         </div>
       )}
     </div>
